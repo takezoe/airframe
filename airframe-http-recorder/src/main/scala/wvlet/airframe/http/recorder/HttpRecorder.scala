@@ -31,9 +31,9 @@ case class HttpRecorderConfig(
     sessionName: String = "default",
     expirationTime: String = "1M", // Delete recorded response in a month by default
     // the folder to store response records
-    dbFileName: String = "http-records",
+    //dbFileName: String = "http-records",
     storageFolder: String = ".airframe/http",
-    recordTableName: String = "record",
+    //recordTableName: String = "record",
     // Specify the port to use. The default is finding an available port
     private val port: Int = -1,
     // Used for computing hash key for matching requests
@@ -41,7 +41,7 @@ case class HttpRecorderConfig(
     excludeHeaderForRecording: (String, String) => Boolean = HttpRecorder.defaultHeaderFilterForRecording,
     fallBackHandler: Service[Request, Response] = HttpRecorder.defaultFallBackHandler
 ) {
-  def sqliteFilePath = s"${storageFolder}/${dbFileName}.sqlite"
+  //def sqliteFilePath = s"${storageFolder}/${dbFileName}.sqlite"
 
   lazy val serverPort = if (port == -1) {
     IOUtil.unusedPort

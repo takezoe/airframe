@@ -36,7 +36,7 @@ case class HttpRecord(
     responseCode: Int,
     responseHeader: Seq[(String, String)],
     responseBody: String,
-    createdAt: Instant
+    createdAt: Long
 ) {
 
   def summary: String = {
@@ -58,47 +58,47 @@ case class HttpRecord(
   }
 
   def insertInto(tableName: String, conn: Connection): Unit = {
-    withResource(conn.prepareStatement(s"""|insert into "${tableName}" values(
-          |?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-          |)
-      """.stripMargin)) { prep =>
-      // TODO Implement this logic in JDBCResultSetCodec
-      prep.setString(1, session)
-      prep.setInt(2, requestHash)
-      prep.setString(3, method)
-      prep.setString(4, destHost)
-      prep.setString(5, path)
-      prep.setString(6, JSONCodec.toJson(headerCodec.toMsgPack(requestHeader)))
-      prep.setString(7, requestBody)
-      prep.setInt(8, responseCode)
-      prep.setString(9, JSONCodec.toJson(headerCodec.toMsgPack(responseHeader)))
-      prep.setString(10, responseBody)
-      prep.setString(11, createdAt.toString)
-
-      prep.execute()
-    }
+//    withResource(conn.prepareStatement(s"""|insert into "${tableName}" values(
+//          |?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+//          |)
+//      """.stripMargin)) { prep =>
+//      // TODO Implement this logic in JDBCResultSetCodec
+//      prep.setString(1, session)
+//      prep.setInt(2, requestHash)
+//      prep.setString(3, method)
+//      prep.setString(4, destHost)
+//      prep.setString(5, path)
+//      prep.setString(6, JSONCodec.toJson(headerCodec.toMsgPack(requestHeader)))
+//      prep.setString(7, requestBody)
+//      prep.setInt(8, responseCode)
+//      prep.setString(9, JSONCodec.toJson(headerCodec.toMsgPack(responseHeader)))
+//      prep.setString(10, responseBody)
+//      prep.setString(11, createdAt.toString)
+//
+//      prep.execute()
+//    }
   }
 }
 
 object HttpRecord extends LogSupport {
   private[recorder] val headerCodec                               = MessageCodec.of[Seq[(String, String)]]
   private[recorder] val recordCodec                               = MessageCodec.of[HttpRecord]
-  private[recorder] def createTableSQL(tableName: String): String =
-    // TODO: Add a method to generate this SQL statement in airframe-codec
-    s"""create table if not exists "${tableName}" (
-       |  session string,
-       |  requestHash string,
-       |  method string,
-       |  destHost string,
-       |  path string,
-       |  requestHeader string,
-       |  requestBody string,
-       |  responseCode int,
-       |  responseHeader string,
-       |  responseBody string,
-       |  createdAt string
-       |)
-     """.stripMargin
+//  private[recorder] def createTableSQL(tableName: String): String =
+//    // TODO: Add a method to generate this SQL statement in airframe-codec
+//    s"""create table if not exists "${tableName}" (
+//       |  session string,
+//       |  requestHash string,
+//       |  method string,
+//       |  destHost string,
+//       |  path string,
+//       |  requestHeader string,
+//       |  requestBody string,
+//       |  responseCode int,
+//       |  responseHeader string,
+//       |  responseBody string,
+//       |  createdAt string
+//       |)
+//     """.stripMargin
 
   private[recorder] def read(rs: ResultSet): Seq[HttpRecord] = {
     val resultSetCodec = JDBCCodec(rs)

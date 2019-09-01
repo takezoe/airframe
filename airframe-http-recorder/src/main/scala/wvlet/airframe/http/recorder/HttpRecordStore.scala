@@ -13,15 +13,28 @@
  */
 package wvlet.airframe.http.recorder
 
+import java.{lang => jl, util => ju}
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.{Base64, Locale}
 
 import com.twitter.finagle.http.{Request, Response}
 import com.twitter.io.Buf
-import wvlet.airframe.jdbc.{DbConfig, SQLiteConnectionPool}
-import wvlet.airframe.metrics.TimeWindow
+import org.yaml.snakeyaml.Yaml
+//import wvlet.airframe.config.YamlReader
+//import wvlet.airframe.config.YamlReader.{bindMap, loadMapOf, loadYaml, trace}
+//import wvlet.airframe.jdbc.{DbConfig, SQLiteConnectionPool}
+//import wvlet.airframe.metrics.TimeWindow
+//import wvlet.airframe.surface.Surface
 import wvlet.log.LogSupport
+import wvlet.log.io.IOUtil.readAsString
+
+import scala.collection.immutable.ListMap
+import scala.collection.JavaConverters._
+
+object YamlTest extends App {
+  println(new Yaml().represent(List("aaa", "bbb", "ccc").asJava))
+}
 
 /**
   * Recorder for HTTP server responses
@@ -30,86 +43,39 @@ class HttpRecordStore(val recorderConfig: HttpRecorderConfig, dropSession: Boole
     extends AutoCloseable
     with LogSupport {
   private val requestCounter = scala.collection.mutable.Map.empty[Int, AtomicInteger]
-  private val connectionPool = {
-    val dbFilePath = if (inMemory) ":memory:" else recorderConfig.sqliteFilePath
-    new SQLiteConnectionPool(DbConfig.ofSQLite(dbFilePath))
-  }
-  private def recordTableName = recorderConfig.recordTableName
-
-  // Increment this value if we need to change the table format.
-  private val recordFormatVersion = 4
+  private val records: Seq[HttpRecord] = Nil
 
   init
 
-  private def createRecorderInfoTable: Unit = {
-    connectionPool.executeUpdate("create table if not exists recorder_info(format_version integer primary key)")
-  }
-
   protected def init {
-    // Support recorder version migration for persistent records
-    createRecorderInfoTable
-    val lastVersion: Option[Int] = connectionPool.executeQuery("select format_version from recorder_info limit 1") {
-      handler =>
-        if (handler.next()) {
-          Some(handler.getInt(1))
-        } else {
-          None
-        }
-    }
+    // load from file
+    loadYaml(recorderConfig.storageFolder + "/" + recorderConfig.sessionName + ".yaml")
 
-    def setVersion: Unit = {
-      clearAllRecords
-      // Record the current record format version
-      connectionPool.executeUpdate(
-        s"insert into recorder_info(format_version) values(${recordFormatVersion}) ON CONFLICT(format_version) DO UPDATE SET format_version=${recordFormatVersion}"
-      )
-    }
-
-    lastVersion match {
-      case None => setVersion
-      case Some(last) if last != recordFormatVersion =>
-        warn(s"Record format version has been changed from ${last} to ${recordFormatVersion}")
-        connectionPool.executeUpdate("drop table if exists recorder_info") // Support schema migration
-        createRecorderInfoTable
-        setVersion
-      case _ => // do nothing
-    }
-
-    // Prepare a database table for recording HttpRecord
-    connectionPool.executeUpdate(HttpRecord.createTableSQL(recordTableName))
-    connectionPool.executeUpdate(
-      s"create index if not exists ${recordTableName}_index on ${recordTableName} (session, requestHash)"
-    )
     // TODO: Detect schema change
     if (dropSession) {
       clearSession
     }
-    cleanupExpiredRecords
   }
 
-  private def clearAllRecords: Unit = {
-    warn(s"Deleting all records in ${recorderConfig.sqliteFilePath}")
-    connectionPool.executeUpdate(s"drop table if exists ${recordTableName}")
+  private def loadYaml(resourcePath: String): Unit = {
+//    val yaml = new Yaml().load(readAsString(resourcePath)).asInstanceOf[ju.Map[AnyRef, AnyRef]].asScala.toMap
+//    println(yaml)
+//    val surface: Surface = wvlet.airframe.surface.Surface.of[A]
+//    val map              = ListMap.newBuilder[String, A]
+//    for ((k, v) <- yaml) yield {
+//      map += k.toString -> bindMap[A](surface, v.asInstanceOf[ju.Map[AnyRef, AnyRef]].asScala.toMap)
+//    }
+//    map.result
+  }
+
+  private def saveYaml(resourcePath: String): Unit = {
+    println(new Yaml().represent(List("aaa", "bbb", "ccc").asJava))
   }
 
   def clearSession: Unit = {
-    warn(s"Deleting old session records for session:${recorderConfig.sessionName}")
-    connectionPool.executeUpdate(s"delete from ${recordTableName} where session = '${recorderConfig.sessionName}'")
-  }
-
-  private def cleanupExpiredRecords: Unit = {
-    val duration = TimeWindow.withUTC.parse(recorderConfig.expirationTime)
-    val diffSec  = duration.endUnixTime - duration.startUnixTime
-
-    val deletedRows = connectionPool.executeUpdate(
-      s"delete from ${recordTableName} where session = '${recorderConfig.sessionName}' and strftime('%s', 'now') - strftime('%s', createdAt) >= ${diffSec}"
-    )
-
-    if (deletedRows > 0) {
-      warn(
-        s"Deleted ${deletedRows} expired records from session:${recorderConfig.sessionName}, db:${recorderConfig.sqliteFilePath}"
-      )
-    }
+    // TODO delete yaml file
+//    warn(s"Deleting old session records for session:${recorderConfig.sessionName}")
+//    connectionPool.executeUpdate(s"delete from ${recordTableName} where session = '${recorderConfig.sessionName}'")
   }
 
   def resetCounter: Unit = {
@@ -117,15 +83,7 @@ class HttpRecordStore(val recorderConfig: HttpRecorderConfig, dropSession: Boole
   }
 
   def numRecordsInSession: Long = {
-    connectionPool.executeQuery(
-      s"select count(1) cnt from ${recordTableName} where session = '${recorderConfig.sessionName}'"
-    ) { rs =>
-      if (rs.next()) {
-        rs.getLong(1)
-      } else {
-        0L
-      }
-    }
+    records.size
   }
 
   def findNext(request: Request, incrementHitCount: Boolean = true): Option[HttpRecord] = {
@@ -136,16 +94,8 @@ class HttpRecordStore(val recorderConfig: HttpRecorderConfig, dropSession: Boole
     val counter  = requestCounter.getOrElseUpdate(rh, new AtomicInteger())
     val hitCount = if (incrementHitCount) counter.getAndIncrement() else counter.get()
     trace(s"findNext: request hash: ${rh} for ${request}, hitCount: ${hitCount}")
-    connectionPool.queryWith(
-      // Get the next request matching the requestHash
-      s"select * from ${recordTableName} where session = ? and requestHash = ? order by createdAt limit 1 offset ?"
-    ) { prepare =>
-      prepare.setString(1, recorderConfig.sessionName)
-      prepare.setInt(2, rh)
-      prepare.setInt(3, hitCount)
-    } { rs =>
-      HttpRecord.read(rs).headOption
-    }
+
+    records.sortBy(_.createdAt).filter(_.requestHash == rh).drop(hitCount).headOption
   }
 
   def record(request: Request, response: Response): Unit = {
@@ -170,13 +120,14 @@ class HttpRecordStore(val recorderConfig: HttpRecorderConfig, dropSession: Boole
     )
 
     trace(s"record: request hash ${rh} for ${request} -> ${entry.summary}")
-    connectionPool.withConnection { conn =>
-      entry.insertInto(recordTableName, conn)
-    }
+    // TODO save
+//    connectionPool.withConnection { conn =>
+//      entry.insertInto(recordTableName, conn)
+//    }
   }
 
   override def close(): Unit = {
-    connectionPool.stop
+//    connectionPool.stop
   }
 
 }
