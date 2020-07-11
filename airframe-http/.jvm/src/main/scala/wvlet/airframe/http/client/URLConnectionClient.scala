@@ -27,6 +27,7 @@ import wvlet.airframe.http._
 import wvlet.airframe.http.router.HttpResponseCodec
 import wvlet.airframe.json.JSON.{JSONArray, JSONObject}
 
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration.Duration
 import scala.jdk.CollectionConverters._
 import scala.reflect.runtime.universe
@@ -41,6 +42,29 @@ case class URLConnectionClientConfig(
     codecFactory: MessageCodecFactory = MessageCodecFactory.defaultFactoryForJSON,
     followRedirect: Boolean = true
 )
+
+class URLConnectionAsyncClient(client: URLConnectionClient, executionContext: ExecutionContext) extends HttpClient[Future, Request, Response] {
+  override def syncClient: HttpSyncClient[Request, Response] = client
+  override private[http] def awaitF[A](f: Future[A]) = ???
+  override def send(req: Request, requestFilter: Request => Request): Future[Response] = Future { client.send(req, requestFilter) }(executionContext)
+  override def sendSafe(req: Request, requestFilter: Request => Request): Future[Response] = Future { client.sendSafe(req, requestFilter) }(executionContext)
+  override def get[Resource: universe.TypeTag](resourcePath: String, requestFilter: Request => Request): Future[Resource] = Future { client.get(resourcePath, requestFilter) }(executionContext)
+  override def getResource[ResourceRequest: universe.TypeTag, Resource: universe.TypeTag](resourcePath: String, resourceRequest: ResourceRequest, requestFilter: Request => Request): Future[Resource] = Future { client.getResource(resourcePath, requestFilter) }(executionContext)
+  override def list[OperationResponse: universe.TypeTag](resourcePath: String, requestFilter: Request => Request): Future[OperationResponse] = Future { client.list(resourcePath, requestFilter) }(executionContext)
+  override def post[Resource: universe.TypeTag](resourcePath: String, resource: Resource, requestFilter: Request => Request): Future[Resource] = Future { client.post(resourcePath, requestFilter) }(executionContext)
+  override def postRaw[Resource: universe.TypeTag](resourcePath: String, resource: Resource, requestFilter: Request => Request): Future[Response] = Future { client.postRaw(resourcePath, requestFilter) }(executionContext)
+  override def postOps[Resource: universe.TypeTag, OperationResponse: universe.TypeTag](resourcePath: String, resource: Resource, requestFilter: Request => Request): Future[OperationResponse] = Future { client.postOps(resourcePath, requestFilter) }(executionContext)
+  override def put[Resource: universe.TypeTag](resourcePath: String, resource: Resource, requestFilter: Request => Request): Future[Resource] = Future { client.put(resourcePath, requestFilter) }(executionContext)
+  override def putRaw[Resource: universe.TypeTag](resourcePath: String, resource: Resource, requestFilter: Request => Request): Future[Response] = Future { client.putRaw(resourcePath, requestFilter) }(executionContext)
+  override def putOps[Resource: universe.TypeTag, OperationResponse: universe.TypeTag](resourcePath: String, resource: Resource, requestFilter: Request => Request): Future[OperationResponse] = Future { client.putOps(resourcePath, requestFilter) }(executionContext)
+  override def delete[OperationResponse: universe.TypeTag](resourcePath: String, requestFilter: Request => Request): Future[OperationResponse] = Future { client.delete(resourcePath, requestFilter) }(executionContext)
+  override def deleteRaw(resourcePath: String, requestFilter: Request => Request): Future[Response] = Future { client.deleteRaw(resourcePath, requestFilter) }(executionContext)
+  override def deleteOps[Resource: universe.TypeTag, OperationResponse: universe.TypeTag](resourcePath: String, resource: Resource, requestFilter: Request => Request): Future[OperationResponse] = Future { client.deleteOps(resourcePath, requestFilter) }(executionContext)
+  override def patch[Resource: universe.TypeTag](resourcePath: String, resource: Resource, requestFilter: Request => Request): Future[Resource] = Future { client.patch(resourcePath, requestFilter) }(executionContext)
+  override def patchRaw[Resource: universe.TypeTag](resourcePath: String, resource: Resource, requestFilter: Request => Request): Future[Response] = Future { client.patchRaw(resourcePath, requestFilter) }(executionContext)
+  override def patchOps[Resource: universe.TypeTag, OperationResponse: universe.TypeTag](resourcePath: String, resource: Resource, requestFilter: Request => Request): Future[OperationResponse] = Future { client.patchOps(resourcePath, requestFilter) }(executionContext)
+  override def close(): Unit = client.close()
+}
 
 /**
   * Http sync client implementation using URLConnection
